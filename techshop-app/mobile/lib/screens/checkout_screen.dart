@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/orders_api.dart';
 import '../api/payment_api.dart';
 import '../api/user_api.dart';
+import '../core/api/api_exception.dart';
+import '../core/demo/demo_orders_storage.dart';
+import '../core/demo/demo_stock_storage.dart';
 import '../core/format/money.dart';
 import '../models/address.dart';
 import '../stores/auth_store.dart';
@@ -52,11 +56,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!auth.isAuthenticated) return [];
 
     final api = context.read<UserApi>();
-    final items = await api.getAddresses();
-    if (_selectedAddressId == null && items.isNotEmpty) {
-      _selectedAddressId = items.first.id;
+    try {
+      final items = await api.getAddresses();
+      if (_selectedAddressId == null && items.isNotEmpty) {
+        _selectedAddressId = items.first.id;
+      }
+      return items;
+    } catch (_) {
+      return [];
     }
-    return items;
   }
 
   Future<void> _reloadAddresses() async {
@@ -77,19 +85,104 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final ok = _createAddressKey.currentState?.validate() ?? false;
     if (!ok) return null;
 
-    final createdId = await context.read<UserApi>().createAddress(
-          Address(
-            id: '',
-            label: _label.text.trim(),
-            street: _street.text.trim(),
-            city: _city.text.trim(),
-            postalCode: _postalCode.text.trim(),
-            isDefault: _makeDefault,
-          ),
-        );
+    try {
+      final createdId = await context.read<UserApi>().createAddress(
+            Address(
+              id: '',
+              label: _label.text.trim(),
+              street: _street.text.trim(),
+              city: _city.text.trim(),
+              postalCode: _postalCode.text.trim(),
+              isDefault: _makeDefault,
+            ),
+          );
 
-    _selectedAddressId = createdId;
-    return createdId;
+      _selectedAddressId = createdId;
+      return createdId;
+    } on ApiException catch (e) {
+      if (e.statusCode != null) rethrow;
+      final localId = 'local-${DateTime.now().millisecondsSinceEpoch}';
+      _selectedAddressId = localId;
+      return localId;
+    } catch (_) {
+      final localId = 'local-${DateTime.now().millisecondsSinceEpoch}';
+      _selectedAddressId = localId;
+      return localId;
+    }
+  }
+
+  Address _resolveAddress(List<Address> existing, String addressId) {
+    final found = existing.where((a) => a.id == addressId).toList(growable: false);
+    if (found.isNotEmpty) return found.first;
+
+    return Address(
+      id: addressId,
+      label: _label.text.trim().isEmpty ? 'Adresse' : _label.text.trim(),
+      street: _street.text.trim(),
+      city: _city.text.trim(),
+      postalCode: _postalCode.text.trim(),
+      isDefault: false,
+    );
+  }
+
+  Future<CreateOrderResponse> _createDemoOrder({
+    required CartStore cart,
+    required Address address,
+    required String paymentMethod,
+  }) async {
+    final now = DateTime.now();
+    final id = 'DEMO-${now.millisecondsSinceEpoch}';
+    final status = paymentMethod == 'CARD' ? 'PENDING' : 'CONFIRMED';
+
+    final total = cart.items.fold<double>(0, (sum, i) => sum + i.price * i.quantity);
+
+    final items = <Map<String, dynamic>>[];
+    for (var idx = 0; idx < cart.items.length; idx++) {
+      final i = cart.items[idx];
+      items.add({
+        'id': 'demo-item-$idx',
+        'quantity': i.quantity,
+        'unitPrice': i.price,
+        'product': {
+          'id': i.productId,
+          'name': i.name,
+          'slug': i.slug,
+          'images': i.imageUrl == null ? const <String>[] : <String>[i.imageUrl!],
+        },
+      });
+    }
+
+    final orderJson = <String, dynamic>{
+      'id': id,
+      'status': status,
+      'totalAmount': total,
+      'paymentMethod': paymentMethod,
+      'paymentRef': null,
+      'notes': null,
+      'createdAt': now.toIso8601String(),
+      'updatedAt': now.toIso8601String(),
+      'address': {
+        'id': address.id,
+        'label': address.label,
+        'street': address.street,
+        'city': address.city,
+        'postalCode': address.postalCode,
+      },
+      'items': items,
+    };
+
+    await DemoOrdersStorage().prependOrder(orderJson);
+
+    final stockStorage = DemoStockStorage();
+    final overrides = await stockStorage.load();
+    for (final i in cart.items) {
+      final current = overrides[i.productId] ?? i.stock;
+      final next = current - i.quantity;
+      overrides[i.productId] = next < 0 ? 0 : next;
+    }
+    await stockStorage.save(overrides);
+
+    return CreateOrderResponse(id: id, status: status);
   }
 
   Future<void> _placeOrder() async {
@@ -121,26 +214,71 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         return;
       }
 
-      final res = await ordersApi.createOrder(
-        items: cart.items
-            .map((i) => {
-                  'productId': i.productId,
-                  'quantity': i.quantity,
-                })
-            .toList(growable: false),
-        addressId: addressId,
-        paymentMethod: _paymentMethod,
-      );
+      var demoOrder = false;
+      late final CreateOrderResponse res;
+      try {
+        res = await ordersApi.createOrder(
+          items: cart.items
+              .map((i) => {
+                    'productId': i.productId,
+                    'quantity': i.quantity,
+                  })
+              .toList(growable: false),
+          addressId: addressId,
+          paymentMethod: _paymentMethod,
+        );
+      } on ApiException catch (e) {
+        if (e.statusCode != null) rethrow;
+        demoOrder = true;
+        final address = _resolveAddress(addresses, addressId);
+        res = await _createDemoOrder(cart: cart, address: address, paymentMethod: _paymentMethod);
+      }
 
       await cart.clear();
 
       String? stripeUrl;
       if (_paymentMethod == 'CARD') {
-        final session = await paymentApi.createStripeCheckoutSession(res.id);
-        stripeUrl = session.url;
-        final uri = Uri.tryParse(session.url);
-        if (uri != null) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (demoOrder) {
+          stripeUrl = null;
+          if (mounted) {
+            messenger.showSnackBar(const SnackBar(content: Text('Paiement carte indisponible (mode démo).')));
+          }
+        } else {
+          try {
+            final session = await paymentApi.createStripeCheckoutSession(res.id);
+            final url = session.url.trim();
+            final uri = Uri.tryParse(url);
+
+            if (uri != null && uri.hasScheme && url.isNotEmpty) {
+              stripeUrl = url;
+              try {
+                await launchUrl(
+                  uri,
+                  mode: LaunchMode.platformDefault,
+                  webOnlyWindowName: kIsWeb ? '_blank' : null,
+                );
+              } catch (_) {
+                if (mounted) {
+                  messenger.showSnackBar(const SnackBar(content: Text("Impossible d'ouvrir le paiement automatiquement.")));
+                }
+              }
+            } else {
+              stripeUrl = null;
+              if (mounted) {
+                messenger.showSnackBar(const SnackBar(content: Text('Paiement carte indisponible.')));
+              }
+            }
+          } on ApiException catch (e) {
+            stripeUrl = null;
+            if (mounted) {
+              messenger.showSnackBar(SnackBar(content: Text(e.message.isEmpty ? 'Paiement carte indisponible.' : e.message)));
+            }
+          } catch (_) {
+            stripeUrl = null;
+            if (mounted) {
+              messenger.showSnackBar(const SnackBar(content: Text('Paiement carte indisponible.')));
+            }
+          }
         }
       }
 
@@ -150,6 +288,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           builder: (_) => OrderConfirmationScreen(orderId: res.id, status: res.status, stripeUrl: stripeUrl),
         ),
       );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(e.message.isEmpty ? 'Commande impossible.' : e.message)));
     } catch (_) {
       if (!mounted) return;
       messenger.showSnackBar(const SnackBar(content: Text('Commande impossible.')));

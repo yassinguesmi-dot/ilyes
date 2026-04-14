@@ -5,6 +5,7 @@ import '../stores/auth_store.dart';
 import '../stores/wishlist_store.dart';
 import 'auth_screen.dart';
 import 'orders_screen.dart';
+import 'stock_management_screen.dart';
 import 'wishlist_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -63,7 +64,14 @@ class ProfileScreen extends StatelessWidget {
                   await _ensureAuth(context);
                   if (!context.mounted) return;
                   if (!context.read<AuthStore>().isAuthenticated) return;
-                  await context.read<WishlistStore>().refresh();
+                  try {
+                    await context.read<WishlistStore>().refresh();
+                  } catch (_) {
+                    if (!context.mounted) return;
+                    final msg = context.read<WishlistStore>().error ?? 'Wishlist indisponible.';
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+                    return;
+                  }
                   if (!context.mounted) return;
                   Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WishlistScreen()));
                 },
@@ -81,6 +89,18 @@ class ProfileScreen extends StatelessWidget {
                   Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OrdersScreen()));
                 },
               ),
+              if (auth.isAuthenticated && auth.user?.role == 'ADMIN') ...[
+                const SizedBox(height: 12),
+                ListTile(
+                  tileColor: Colors.grey.shade900,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  leading: const Icon(Icons.inventory_2_outlined),
+                  title: const Text('Gestion de stock'),
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StockManagementScreen()));
+                  },
+                ),
+              ],
               const SizedBox(height: 20),
               if (auth.isAuthenticated)
                 OutlinedButton(

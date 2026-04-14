@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../core/demo/demo_orders_storage.dart';
+import '../core/demo/demo_stock_storage.dart';
 import '../core/api/api_client.dart';
 import '../core/api/api_exception.dart';
 import '../models/order.dart';
@@ -37,6 +39,12 @@ class OrdersApi {
           .map((m) => OrderListItem.fromJson(m.cast<String, dynamic>()))
           .toList(growable: false);
     } on DioException catch (e) {
+      if (e.response == null) {
+        final raw = await DemoOrdersStorage().loadOrders();
+        final demo = raw.map(OrderListItem.fromJson).toList(growable: true);
+        demo.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return demo;
+      }
       throw apiExceptionFromDio(e);
     }
   }
@@ -52,6 +60,11 @@ class OrdersApi {
 
       return OrderDetail.fromJson(order.cast<String, dynamic>());
     } on DioException catch (e) {
+      if (e.response == null) {
+        final raw = await DemoOrdersStorage().findById(orderId);
+        if (raw == null) throw ApiException('Commande introuvable');
+        return OrderDetail.fromJson(raw);
+      }
       throw apiExceptionFromDio(e);
     }
   }
@@ -85,6 +98,28 @@ class OrdersApi {
     try {
       await _client.dio.put('/orders/$orderId/cancel');
     } on DioException catch (e) {
+      if (e.response == null) {
+        final storage = DemoOrdersStorage();
+        final existing = await storage.findById(orderId);
+        if (existing == null) return;
+
+        final status = existing['status']?.toString();
+        if (status == 'CANCELLED') return;
+
+        final detail = OrderDetail.fromJson(existing);
+        final overrides = await DemoStockStorage().load();
+        for (final item in detail.items) {
+          final pid = item.product.id;
+          overrides[pid] = (overrides[pid] ?? 0) + item.quantity;
+        }
+        await DemoStockStorage().save(overrides);
+
+        final updated = Map<String, dynamic>.from(existing);
+        updated['status'] = 'CANCELLED';
+        updated['updatedAt'] = DateTime.now().toIso8601String();
+        await storage.replaceById(orderId, updated);
+        return;
+      }
       throw apiExceptionFromDio(e);
     }
   }

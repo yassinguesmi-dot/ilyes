@@ -15,6 +15,10 @@ class AuthStore extends ChangeNotifier {
         _authApi = authApi,
         _userApi = userApi;
 
+  static const String demoUserEmail = 'demo@techshop.tn';
+  static const String demoAdminEmail = 'admin@techshop.tn';
+  static const String demoPassword = 'demo1234';
+
   final SecureStorage _secureStorage;
   final AuthApi _authApi;
   final UserApi _userApi;
@@ -83,6 +87,39 @@ class AuthStore extends ChangeNotifier {
     } on ApiException catch (e) {
       _error = e.message;
       rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loginDemo({required bool asAdmin}) async {
+    final email = asAdmin ? demoAdminEmail : demoUserEmail;
+
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final result = await _authApi.login(email: email, password: demoPassword);
+      await _secureStorage.saveTokens(
+        accessToken: result.tokens.accessToken,
+        refreshToken: result.tokens.refreshToken,
+      );
+      await _secureStorage.saveUser(result.user);
+      _user = result.user;
+    } catch (_) {
+      final demoUser = User(
+        id: asAdmin ? 'demo-admin' : 'demo-user',
+        email: email,
+        fullName: asAdmin ? 'Admin Démo' : 'Client Démo',
+        phone: null,
+        role: asAdmin ? 'ADMIN' : 'USER',
+        createdAt: DateTime.now(),
+      );
+      await _secureStorage.clearTokens();
+      await _secureStorage.saveUser(demoUser);
+      _user = demoUser;
     } finally {
       _isLoading = false;
       notifyListeners();

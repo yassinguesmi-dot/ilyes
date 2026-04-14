@@ -47,7 +47,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (!mounted) return;
     if (!context.read<AuthStore>().isAuthenticated) return;
 
-    await context.read<WishlistStore>().toggle(productId);
+    try {
+      await context.read<WishlistStore>().toggle(productId);
+    } catch (_) {
+      if (!mounted) return;
+      final msg = context.read<WishlistStore>().error ?? 'Wishlist indisponible.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
   }
 
   @override
@@ -112,7 +118,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(
                             color: Colors.grey.shade900,
-                            child: const Center(child: Icon(Icons.broken_image_outlined)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(48),
+                              child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                            ),
                           ),
                         ),
                       );
@@ -126,7 +135,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     color: Colors.grey.shade900,
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Center(child: Icon(Icons.image_not_supported_outlined)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(48),
+                    child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                  ),
                 ),
               const SizedBox(height: 16),
               Text(p.name, style: Theme.of(context).textTheme.headlineSmall),

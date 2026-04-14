@@ -132,16 +132,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           width: 56,
                           height: 56,
                           child: imageUrl == null
-                              ? const ColoredBox(
+                              ? ColoredBox(
                                   color: Colors.black,
-                                  child: Icon(Icons.image_not_supported_outlined),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(10),
+                                    child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                                  ),
                                 )
                               : Image.network(
                                   imageUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const ColoredBox(
+                                  errorBuilder: (_, __, ___) => ColoredBox(
                                     color: Colors.black,
-                                    child: Icon(Icons.broken_image_outlined),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(10),
+                                      child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                                    ),
                                   ),
                                 ),
                         ),

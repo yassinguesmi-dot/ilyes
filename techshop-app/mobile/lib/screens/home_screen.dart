@@ -58,7 +58,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     if (!context.read<AuthStore>().isAuthenticated) return;
 
-    await context.read<WishlistStore>().refresh();
+    try {
+      await context.read<WishlistStore>().refresh();
+    } catch (_) {
+      if (!mounted) return;
+      final msg = context.read<WishlistStore>().error ?? 'Wishlist indisponible.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      return;
+    }
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WishlistScreen()));
   }
@@ -231,11 +238,17 @@ class _ProductCard extends StatelessWidget {
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: imageUrl == null
-                      ? const Center(child: Icon(Icons.image_not_supported_outlined))
+                      ? Padding(
+                          padding: const EdgeInsets.all(18),
+                          child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                        )
                       : Image.network(
                           imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined)),
+                          errorBuilder: (_, __, ___) => Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                          ),
                         ),
                 ),
               ),
@@ -264,7 +277,13 @@ class _ProductCard extends StatelessWidget {
                         }
 
                         final wishlist = context.read<WishlistStore>();
-                        await wishlist.toggle(product.id);
+                        try {
+                          await wishlist.toggle(product.id);
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          final msg = wishlist.error ?? 'Wishlist indisponible.';
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+                        }
                       },
                       child: const Text('♥'),
                     ),

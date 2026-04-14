@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -15,14 +17,26 @@ class RootGate extends StatefulWidget {
 
 class _RootGateState extends State<RootGate> {
   late final Future<void> _bootstrapFuture;
+  late final Completer<void> _bootstrapCompleter;
 
   @override
   void initState() {
     super.initState();
-    _bootstrapFuture = _bootstrap();
+    _bootstrapCompleter = Completer<void>();
+    _bootstrapFuture = _bootstrapCompleter.future;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await _bootstrap();
+        if (!_bootstrapCompleter.isCompleted) _bootstrapCompleter.complete();
+      } catch (e, st) {
+        if (!_bootstrapCompleter.isCompleted) _bootstrapCompleter.completeError(e, st);
+      }
+    });
   }
 
   Future<void> _bootstrap() async {
+    if (!mounted) return;
     final authStore = context.read<AuthStore>();
     final cartStore = context.read<CartStore>();
     final wishlistStore = context.read<WishlistStore>();
@@ -32,7 +46,9 @@ class _RootGateState extends State<RootGate> {
 
     if (!mounted) return;
     if (authStore.isAuthenticated) {
-      await wishlistStore.refresh();
+      try {
+        await wishlistStore.refresh();
+      } catch (_) {}
     }
   }
 

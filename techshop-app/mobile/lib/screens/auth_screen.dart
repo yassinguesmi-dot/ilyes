@@ -89,6 +89,24 @@ class _LoginTabState extends State<_LoginTab> {
     }
   }
 
+  Future<void> _loginDemo(bool asAdmin) async {
+    final auth = context.read<AuthStore>();
+    final wishlist = context.read<WishlistStore>();
+
+    try {
+      await auth.loginDemo(asAdmin: asAdmin);
+      try {
+        await wishlist.refresh();
+      } catch (_) {}
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (_) {
+      if (!mounted) return;
+      final msg = auth.error ?? 'Connexion démo impossible.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -126,11 +144,34 @@ class _LoginTabState extends State<_LoginTab> {
             const SizedBox(height: 16),
             Consumer<AuthStore>(
               builder: (context, auth, _) {
-                return FilledButton(
-                  onPressed: auth.isLoading ? null : _submit,
-                  child: auth.isLoading
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Se connecter'),
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.tonal(
+                            onPressed: auth.isLoading ? null : () => _loginDemo(false),
+                            child: const Text('Démo client'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.tonal(
+                            onPressed: auth.isLoading ? null : () => _loginDemo(true),
+                            child: const Text('Démo admin'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: auth.isLoading ? null : _submit,
+                      child: auth.isLoading
+                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Text('Se connecter'),
+                    ),
+                  ],
                 );
               },
             ),

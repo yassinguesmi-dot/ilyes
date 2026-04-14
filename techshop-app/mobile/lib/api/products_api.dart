@@ -1,10 +1,70 @@
 import 'package:dio/dio.dart';
 
+import '../core/demo/demo_catalog.dart';
+import '../core/demo/demo_stock_storage.dart';
 import '../core/api/api_client.dart';
 import '../core/api/api_exception.dart';
 import '../models/category.dart';
 import '../models/cursor_page.dart';
 import '../models/product.dart';
+
+ProductListItem _withStock(ProductListItem p, int stock) {
+  return ProductListItem(
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    description: p.description,
+    price: p.price,
+    comparePrice: p.comparePrice,
+    stock: stock,
+    images: p.images,
+    category: p.category,
+    avgRating: p.avgRating,
+    reviewCount: p.reviewCount,
+    createdAt: p.createdAt,
+  );
+}
+
+ProductDetail _withStockDetail(ProductDetail p, int stock) {
+  return ProductDetail(
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    description: p.description,
+    price: p.price,
+    comparePrice: p.comparePrice,
+    stock: stock,
+    images: p.images,
+    specs: p.specs,
+    category: p.category,
+    avgRating: p.avgRating,
+    reviewCount: p.reviewCount,
+    reviews: p.reviews,
+    createdAt: p.createdAt,
+  );
+}
+
+Future<List<ProductListItem>> _applyDemoStockToListItems(List<ProductListItem> items) async {
+  final overrides = await DemoStockStorage().load();
+  if (overrides.isEmpty) return items;
+
+  return items
+      .map(
+        (p) {
+          final stock = overrides[p.id];
+          if (stock == null) return p;
+          return _withStock(p, stock);
+        },
+      )
+      .toList(growable: false);
+}
+
+Future<ProductDetail> _applyDemoStockToDetail(ProductDetail p) async {
+  final overrides = await DemoStockStorage().load();
+  final stock = overrides[p.id];
+  if (stock == null) return p;
+  return _withStockDetail(p, stock);
+}
 
 class ProductsApi {
   ProductsApi(this._client);
@@ -25,6 +85,7 @@ class ProductsApi {
           .map((m) => Category.fromJson(m.cast<String, dynamic>()))
           .toList(growable: false);
     } on DioException catch (e) {
+      if (e.response == null) return DemoCatalog.categories;
       throw apiExceptionFromDio(e);
     }
   }
@@ -57,6 +118,10 @@ class ProductsApi {
 
       return CursorPage.fromJson(data.cast<String, dynamic>(), ProductListItem.fromJson);
     } on DioException catch (e) {
+      if (e.response == null) {
+        final items = await _applyDemoStockToListItems(DemoCatalog.featured());
+        return CursorPage(items: items, nextCursor: null);
+      }
       throw apiExceptionFromDio(e);
     }
   }
@@ -75,6 +140,9 @@ class ProductsApi {
           .map((m) => ProductListItem.fromJson(m.cast<String, dynamic>()))
           .toList(growable: false);
     } on DioException catch (e) {
+      if (e.response == null) {
+        return _applyDemoStockToListItems(DemoCatalog.featured());
+      }
       throw apiExceptionFromDio(e);
     }
   }
@@ -90,6 +158,11 @@ class ProductsApi {
 
       return ProductDetail.fromJson(product.cast<String, dynamic>());
     } on DioException catch (e) {
+      if (e.response == null) {
+        final demo = DemoCatalog.detail(slug);
+        if (demo != null) return _applyDemoStockToDetail(demo);
+        throw ApiException('Produit introuvable');
+      }
       throw apiExceptionFromDio(e);
     }
   }
@@ -114,6 +187,17 @@ class ProductsApi {
           .whereType<Map>()
           .map((m) => ProductListItem.fromJson(m.cast<String, dynamic>()))
           .toList(growable: false);
+    } on DioException catch (e) {
+      if (e.response == null) {
+        return _applyDemoStockToListItems(DemoCatalog.search(q, limit: limit));
+      }
+      throw apiExceptionFromDio(e);
+    }
+  }
+
+  Future<void> updateProductStock(String productId, int stock) async {
+    try {
+      await _client.dio.put('/products/$productId', data: {'stock': stock});
     } on DioException catch (e) {
       throw apiExceptionFromDio(e);
     }

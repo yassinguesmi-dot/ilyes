@@ -71,16 +71,22 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           width: 56,
                           height: 56,
                           child: imageUrl == null
-                              ? const ColoredBox(
+                              ? ColoredBox(
                                   color: Colors.black,
-                                  child: Icon(Icons.image_not_supported_outlined),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(10),
+                                    child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                                  ),
                                 )
                               : Image.network(
                                   imageUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const ColoredBox(
+                                  errorBuilder: (_, __, ___) => ColoredBox(
                                     color: Colors.black,
-                                    child: Icon(Icons.broken_image_outlined),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(10),
+                                      child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                                    ),
                                   ),
                                 ),
                         ),
@@ -92,7 +98,13 @@ class _WishlistScreenState extends State<WishlistScreen> {
                       },
                       trailing: IconButton(
                         onPressed: () async {
-                          await wishlist.toggle(p.id);
+                          final messenger = ScaffoldMessenger.of(context);
+                          try {
+                            await wishlist.toggle(p.id);
+                          } catch (_) {
+                            final msg = wishlist.error ?? 'Wishlist indisponible.';
+                            messenger.showSnackBar(SnackBar(content: Text(msg)));
+                          }
                         },
                         icon: const Icon(Icons.favorite),
                         tooltip: 'Retirer',

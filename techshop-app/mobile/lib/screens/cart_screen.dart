@@ -36,16 +36,22 @@ class CartScreen extends StatelessWidget {
                           width: 56,
                           height: 56,
                           child: item.imageUrl == null
-                              ? const ColoredBox(
+                              ? ColoredBox(
                                   color: Colors.black,
-                                  child: Icon(Icons.image_not_supported_outlined),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(10),
+                                    child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                                  ),
                                 )
                               : Image.network(
                                   item.imageUrl!,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const ColoredBox(
+                                  errorBuilder: (_, __, ___) => ColoredBox(
                                     color: Colors.black,
-                                    child: Icon(Icons.broken_image_outlined),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(10),
+                                      child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                                    ),
                                   ),
                                 ),
                         ),
